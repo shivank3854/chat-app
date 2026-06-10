@@ -11,28 +11,28 @@ const io = new Server(server)
 
 app.use(express.static('public'))
 
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('MongoDB Connected!'))
-  .catch(err => console.log(err))
-
 io.on('connection', async (socket) => {
   console.log('A user connected:', socket.id)
 
-  // load last 20 messages from database
-  const messages = await Message.find().sort({ createdAt: 1 }).limit(20)
-  socket.emit('load_messages', messages)
+  try {
+    const messages = await Message.find().sort({ createdAt: 1 }).limit(20)
+    socket.emit('load_messages', messages)
+  } catch (err) {
+    console.log('Error loading messages:', err)
+  }
 
   socket.on('send_message', async (data) => {
     if (!data.text || !data.username) return
-
-    // save message to MongoDB
-    const message = new Message({
-      username: data.username,
-      text: data.text
-    })
-    await message.save()
-
-    io.emit('receive_message', data)
+    try {
+      const message = new Message({
+        username: data.username,
+        text: data.text
+      })
+      await message.save()
+      io.emit('receive_message', data)
+    } catch (err) {
+      console.log('Error saving message:', err)
+    }
   })
 
   socket.on('disconnect', () => {
@@ -40,6 +40,14 @@ io.on('connection', async (socket) => {
   })
 })
 
-server.listen(3000, () => {
-  console.log('Server running on port 3000')
-})
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => {
+    console.log('MongoDB Connected!')
+    server.listen(3000, () => {
+      console.log('Server running on port 3000')
+    })
+  })
+  .catch(err => {
+    console.log('Connection failed:', err)
+    process.exit(1)
+  })
