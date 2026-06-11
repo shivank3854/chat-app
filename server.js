@@ -1,4 +1,4 @@
-// require('dotenv').config()
+require('dotenv').config()
 const express = require('express')
 const http = require('http')
 const { Server } = require('socket.io')
@@ -10,25 +10,36 @@ const server = http.createServer(app)
 const io = new Server(server)
 
 app.use(express.static('public'))
+const uploadRouter = require('./routes/upload')
+app.use(express.json())
+app.use('/uploads', express.static('uploads'))
+app.use('/upload', uploadRouter)
 
 io.on('connection', async (socket) => {
   console.log('A user connected:', socket.id)
 
   try {
-    const messages = await Message.find().sort({ createdAt: 1 }).limit(20)
+    const messages = await Message.find().sort({ createdAt: 1 }).limit(50)
     socket.emit('load_messages', messages)
   } catch (err) {
     console.log('Error loading messages:', err)
   }
 
   socket.on('send_message', async (data) => {
-    if (!data.text || !data.username) return
+    console.log('Received message:', data)
+    console.log('Full data:', JSON.stringify(data) )
+    console.log('fileUrl:', data.fileUrl)
+    console.log('text value:', data.text )
+    if (!data.text && !data.fileUrl) return
     try {
       const message = new Message({
         username: data.username,
-        text: data.text
+        text: data.text,
+        fileUrl: data.fileUrl || '',
+        fileType: data.fileType || ''
       })
-      await message.save()
+      const saved = await message.save()
+      console.log('saved to mongodb:', saved)
       io.emit('receive_message', data)
     } catch (err) {
       console.log('Error saving message:', err)

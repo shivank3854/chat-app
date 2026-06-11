@@ -160,9 +160,11 @@
   </div>
   <ul id="messages"></ul>
   <div class="input-area">
-    <input id="messageInput" type="text" placeholder="Type a message..." />
-    <button onclick="sendMessage()">Send</button>
-  </div>
+  <input id="messageInput" type="text" placeholder="Type a message..." />
+  <label for="fileInput" style="cursor:pointer; background:#0f3460; color:white; padding:12px 15px; border-radius:8px; font-size:15px;">📎</label>
+  <input id="fileInput" type="file" style="display:none" onchange="sendFile()" accept="image/*,.pdf,.txt"/>
+  <button onclick="sendMessage()">Send</button>
+</div>
 </div>
 
   <script src="/socket.io/socket.io.js"></script>
@@ -210,16 +212,29 @@ document.addEventListener('keypress', (e) => {
 })
 
 socket.on('load_messages', (messages) => {
-  messages.forEach(msg => addMessage(msg.username, msg.text))
+  console.log('loaded messages:', messages)
+  messages.forEach(msg => addMessage(msg.username, msg.text, msg.fileUrl, msg.fileType))
 })
 
 socket.on('receive_message', (data) => {
-  addMessage(data.username, data.text)
+  addMessage(data.username, data.text ,data.fileUrl, data.fileType)
 })
 
-function addMessage(username, text) {
+function addMessage(username, text, fileUrl, fileType) {
   const li = document.createElement('li')
-  li.innerHTML = `<span>${username}</span>${text}`
+  let content = `<span>${username}</span>`
+
+  if (text) content += `${text}`
+
+  if (fileUrl) {
+    if (fileType && fileType.startsWith('image/')) {
+      content += `<br><img src="${fileUrl}" style="max-width:200px; border-radius:8px; margin-top:8px;" />`
+    } else {
+      content += `<br><a href="${fileUrl}" target="_blank" style="color:#e94560;">📄 ${fileUrl.split('/').pop()}</a>`
+    }
+  }
+
+  li.innerHTML = content
   document.getElementById('messages').appendChild(li)
   const messages = document.getElementById('messages')
   messages.scrollTop = messages.scrollHeight
@@ -230,6 +245,33 @@ function logout() {
   document.getElementById('chat').style.display = 'none'
   document.getElementById('login').style.display = 'block'
   document.getElementById('messages').innerHTML = ''
+}
+
+async function sendFile() {
+  const fileInput = document.getElementById('fileInput')
+  const file = fileInput.files[0]
+  if (!file) return
+
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await fetch('/upload', {
+    method: 'POST',
+    body: formData
+  })
+
+  const data = await response.json()
+  console.log('upload respons:', data)
+
+  socket.emit('send_message', {
+    username: username,
+    text: '',
+    fileUrl: data.url,
+    fileName: data.originalname,
+    fileType: data.mimetype
+  })
+
+  fileInput.value = ''
 }
  </script>
 </body>
