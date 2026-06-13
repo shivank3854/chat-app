@@ -16,13 +16,24 @@ app.use(express.static('public'))
 app.use(express.json())
 app.use('/uploads', express.static('uploads'))
 
+const authRouter = require('./routes/auth')
+app.use('/auth', authRouter)
+
+
 const uploadRouter = require('./routes/upload')
 app.use('/upload', uploadRouter)
 
 io.on('connection', async (socket) => {
   console.log('A user connected:', socket.id)
 
-  // load global messages on connection
+  // typing indicater
+  socket.on('typing', (data) => {
+  socket.to(data.room).emit('typing', { username: data.username })
+})
+
+socket.on('stop_typing', (data) => {
+  socket.to(data.room).emit('stop_typing')
+})
   
 
   // user joins with username

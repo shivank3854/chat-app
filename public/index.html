@@ -131,11 +131,35 @@
 <body>
 
   <!-- LOGIN SCREEN -->
-  <div id="login">
-    <h2>Join Chat 💬</h2>
-    <input id="usernameInput" type="text" placeholder="Enter your name..." />
-    <button onclick="joinChat()">Join Now</button>
+  <!-- LOGIN SCREEN -->
+<div id="login">
+  <h2 id="formTitle">Welcome Back 👋</h2>
+
+  <!-- LOGIN FORM -->
+  <div id="loginForm">
+    <input id="loginEmail" type="email" placeholder="Email..." />
+    <input id="loginPassword" type="password" placeholder="Password..." />
+    <button onclick="loginUser()">Login</button>
+    <p style="color:#aaa; margin-top:15px; font-size:14px;">
+      Don't have an account? 
+      <span onclick="showRegister()" style="color:#e94560; cursor:pointer;">Register</span>
+    </p>
   </div>
+
+  <!-- REGISTER FORM -->
+  <div id="registerForm" style="display:none">
+    <input id="registerUsername" type="text" placeholder="Username..." />
+    <input id="registerEmail" type="email" placeholder="Email..." />
+    <input id="registerPassword" type="password" placeholder="Password..." />
+    <button onclick="registerUser()">Register</button>
+    <p style="color:#aaa; margin-top:15px; font-size:14px;">
+      Already have an account? 
+      <span onclick="showLogin()" style="color:#e94560; cursor:pointer;">Login</span>
+    </p>
+  </div>
+
+  <p id="authMessage" style="color:#e94560; margin-top:10px; font-size:14px;"></p>
+</div>
 
   <!-- CHAT SCREEN -->
   <div id="chat">
@@ -160,6 +184,7 @@
           🌐 Global Chat
         </div>
         <ul id="messages" style="flex:1; overflow-y:auto; padding:20px; list-style:none; display:flex; flex-direction:column; gap:10px;"></ul>
+        <div id="typingIndicator" style="padding:0 20px 8px; color:#aaa; font-size:13px; font-style:italic; height:24px;"></div>
         <div class="input-area">
           <input id="messageInput" type="text" placeholder="Type a message..." />
           <label for="fileInput" style="cursor:pointer; background:#0f3460; color:white; padding:12px 15px; border-radius:8px; font-size:15px;">📎</label>
@@ -174,193 +199,280 @@
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io()
-    let username = ''
-    let currentRoom = 'global'
-    let currentChatUser = null
-    let conversations = []
-    let onlineUsersList = []
+let username = ''
+let currentRoom = 'global'
+let currentChatUser = null
+let conversations = []
+let onlineUsersList = []
 
-    // check if username already saved
-    window.onload = () => {
-      const savedUsername = localStorage.getItem('username')
-      if (savedUsername) {
-        username = savedUsername
-        document.getElementById('login').style.display = 'none'
-        document.getElementById('chat').style.display = 'flex'
-        socket.emit('user_join', username)
+// check if token already saved
+window.onload = () => {
+  const token = localStorage.getItem('token')
+  const savedUsername = localStorage.getItem('username')
+  if (token && savedUsername) {
+    username = savedUsername
+    document.getElementById('login').style.display = 'none'
+    document.getElementById('chat').style.display = 'flex'
+    socket.emit('user_join', username)
+  }
+}
+
+function showRegister() {
+  document.getElementById('loginForm').style.display = 'none'
+  document.getElementById('registerForm').style.display = 'block'
+  document.getElementById('formTitle').textContent = 'Create Account 🚀'
+  document.getElementById('authMessage').textContent = ''
+}
+
+function showLogin() {
+  document.getElementById('registerForm').style.display = 'none'
+  document.getElementById('loginForm').style.display = 'block'
+  document.getElementById('formTitle').textContent = 'Welcome Back 👋'
+  document.getElementById('authMessage').textContent = ''
+}
+
+async function registerUser() {
+  console.log('Registering user...')
+  const username_val = document.getElementById('registerUsername').value
+  const email = document.getElementById('registerEmail').value
+  const password = document.getElementById('registerPassword').value
+
+  if (!username_val || !email || !password) {
+    document.getElementById('authMessage').textContent = 'Please fill all fields!'
+    return
+  }
+
+  const response = await fetch('/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: username_val, email, password })
+  })
+
+  const data = await response.json()
+
+  if (response.ok) {
+    document.getElementById('authMessage').style.color = '#4caf50'
+    document.getElementById('authMessage').textContent = 'Registered! Please login.'
+    showLogin()
+  } else {
+    document.getElementById('authMessage').style.color = '#e94560'
+    document.getElementById('authMessage').textContent = data.message
+  }
+}
+
+async function loginUser() {
+  const email = document.getElementById('loginEmail').value
+  const password = document.getElementById('loginPassword').value
+
+  if (!email || !password) {
+    document.getElementById('authMessage').textContent = 'Please fill all fields!'
+    return
+  }
+
+  const response = await fetch('/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  })
+
+  const data = await response.json()
+
+  if (response.ok) {
+    localStorage.setItem('token', data.token)
+    localStorage.setItem('username', data.username)
+    username = data.username
+    document.getElementById('login').style.display = 'none'
+    document.getElementById('chat').style.display = 'flex'
+    socket.emit('user_join', username)
+  } else {
+    document.getElementById('authMessage').style.color = '#e94560'
+    document.getElementById('authMessage').textContent = data.message
+  }
+}
+
+// load conversations from DB
+socket.on('load_conversations', (convs) => {
+  conversations = convs
+  renderSidebar()
+})
+
+// update online users
+socket.on('online_users', (users) => {
+  onlineUsersList = users
+  renderSidebar()
+})
+
+function renderSidebar() {
+  const ul = document.getElementById('usersList')
+  ul.innerHTML = ''
+
+  conversations.forEach(conv => {
+    const otherUser = conv.participants.find(p => p !== username)
+    if (!otherUser) return
+    const isOnline = onlineUsersList.includes(otherUser)
+
+    const li = document.createElement('li')
+    li.style.cssText = 'padding:12px 15px; color:white; cursor:pointer; border-bottom:1px solid #1a1a2e; display:flex; flex-direction:column; gap:4px;'
+    li.innerHTML = `
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="width:8px; height:8px; border-radius:50%; background:${isOnline ? '#4caf50' : '#aaa'}; display:inline-block;"></span>
+        <span style="font-weight:bold;">${otherUser}</span>
+      </div>
+      <div style="font-size:12px; color:#aaa; padding-left:16px;">${conv.lastMessage || 'No messages yet'}</div>
+    `
+    li.onmouseover = () => li.style.background = '#1a1a2e'
+    li.onmouseout = () => li.style.background = 'transparent'
+    li.onclick = () => startPrivateChat(otherUser)
+    ul.appendChild(li)
+  })
+
+  onlineUsersList.forEach(user => {
+    if (user === username) return
+    const alreadyShown = conversations.some(c => c.participants.includes(user))
+    if (alreadyShown) return
+
+    const li = document.createElement('li')
+    li.style.cssText = 'padding:12px 15px; color:white; cursor:pointer; border-bottom:1px solid #1a1a2e;'
+    li.innerHTML = `
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="width:8px; height:8px; border-radius:50%; background:#4caf50; display:inline-block;"></span>
+        <span>${user}</span>
+      </div>
+    `
+    li.onmouseover = () => li.style.background = '#1a1a2e'
+    li.onmouseout = () => li.style.background = 'transparent'
+    li.onclick = () => startPrivateChat(user)
+    ul.appendChild(li)
+  })
+}
+
+function startPrivateChat(targetUser) {
+  currentChatUser = targetUser
+  const roomId = [username, targetUser].sort().join('_')
+  currentRoom = roomId
+  socket.emit('join_private_room', { roomId, targetUser })
+  document.getElementById('chatHeader').textContent = `🔒 Private chat with ${targetUser}`
+  document.getElementById('messages').innerHTML = ''
+}
+
+function switchToGlobal() {
+  currentRoom = 'global'
+  currentChatUser = null
+  document.getElementById('chatHeader').textContent = '🌐 Global Chat'
+  document.getElementById('messages').innerHTML = ''
+  socket.emit('get_global_messages')
+}
+
+function sendMessage() {
+  const input = document.getElementById('messageInput')
+  if (!input.value) return
+  socket.emit('send_message', {
+    text: input.value,
+    username: username,
+    room: currentRoom
+  })
+  input.value = ''
+}
+
+// Enter key works on both login and chat
+document.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    if (document.getElementById('chat').style.display === 'flex') {
+      sendMessage()
+    } else {
+      const registerVisible = document.getElementById('registerForm').style.display === 'block'
+      if (registerVisible) {
+        registerUser()
+      } else {
+        loginUser()
       }
     }
+  }
+})
 
-    function joinChat() {
-      username = document.getElementById('usernameInput').value
-      if (!username) return
-      localStorage.setItem('username', username)
-      document.getElementById('login').style.display = 'none'
-      document.getElementById('chat').style.display = 'flex'
-      socket.emit('user_join', username)
+// typing indicator
+let typingTimeout
+document.getElementById('messageInput').addEventListener('input', () => {
+  socket.emit('typing', { username, room: currentRoom })
+  clearTimeout(typingTimeout)
+  typingTimeout = setTimeout(() => {
+    socket.emit('stop_typing', { room: currentRoom })
+  }, 1000)
+})
+
+socket.on('typing', (data) => {
+  document.getElementById('typingIndicator').textContent = `${data.username} is typing...`
+})
+
+socket.on('stop_typing', () => {
+  document.getElementById('typingIndicator').textContent = ''
+})
+
+socket.on('load_messages', (messages) => {
+  document.getElementById('messages').innerHTML = ''
+  messages.forEach(msg => addMessage(msg.username, msg.text, msg.fileUrl, msg.fileType))
+})
+
+socket.on('receive_message', (data) => {
+  addMessage(data.username, data.text, data.fileUrl, data.fileType)
+})
+
+function addMessage(user, text, fileUrl, fileType) {
+  const li = document.createElement('li')
+  let content = `<span>${user}</span>`
+  if (text) content += `${text}`
+  if (fileUrl) {
+    if (fileType && fileType.startsWith('image/')) {
+      content += `<br><img src="${fileUrl}" style="max-width:200px; border-radius:8px; margin-top:8px;" />`
+    } else {
+      content += `<br><a href="${fileUrl}" target="_blank" style="color:#e94560;">📄 ${fileUrl.split('/').pop()}</a>`
     }
+  }
+  li.innerHTML = content
+  document.getElementById('messages').appendChild(li)
+  const messages = document.getElementById('messages')
+  messages.scrollTop = messages.scrollHeight
+}
 
-    // load conversations from DB
-    socket.on('load_conversations', (convs) => {
-      conversations = convs
-      renderSidebar()
-    })
+function logout() {
+  localStorage.removeItem('token')
+  localStorage.removeItem('username')
+  username = ''
+  currentRoom = 'global'
+  currentChatUser = null
+  conversations = []
+  document.getElementById('chat').style.display = 'none'
+  document.getElementById('login').style.display = 'block'
+  document.getElementById('messages').innerHTML = ''
+  document.getElementById('usersList').innerHTML = ''
+}
 
-    // update online users
-    socket.on('online_users', (users) => {
-      onlineUsersList = users
-      renderSidebar()
-    })
+async function sendFile() {
+  const fileInput = document.getElementById('fileInput')
+  const file = fileInput.files[0]
+  if (!file) return
 
-    function renderSidebar() {
-      const ul = document.getElementById('usersList')
-      ul.innerHTML = ''
+  const formData = new FormData()
+  formData.append('file', file)
 
-      // show previous conversations first
-      conversations.forEach(conv => {
-        const otherUser = conv.participants.find(p => p !== username)
-        if (!otherUser) return
-        const isOnline = onlineUsersList.includes(otherUser)
+  const response = await fetch('/upload', {
+    method: 'POST',
+    body: formData
+  })
 
-        const li = document.createElement('li')
-        li.style.cssText = 'padding:12px 15px; color:white; cursor:pointer; border-bottom:1px solid #1a1a2e; display:flex; flex-direction:column; gap:4px;'
-        li.innerHTML = `
-          <div style="display:flex; align-items:center; gap:8px;">
-            <span style="width:8px; height:8px; border-radius:50%; background:${isOnline ? '#4caf50' : '#aaa'}; display:inline-block;"></span>
-            <span style="font-weight:bold;">${otherUser}</span>
-          </div>
-          <div style="font-size:12px; color:#aaa; padding-left:16px;">${conv.lastMessage || 'No messages yet'}</div>
-        `
-        li.onmouseover = () => li.style.background = '#1a1a2e'
-        li.onmouseout = () => li.style.background = 'transparent'
-        li.onclick = () => startPrivateChat(otherUser)
-        ul.appendChild(li)
-      })
+  const data = await response.json()
 
-      // show online users not in conversations yet
-      onlineUsersList.forEach(user => {
-        if (user === username) return
-        const alreadyShown = conversations.some(c => c.participants.includes(user))
-        if (alreadyShown) return
+  socket.emit('send_message', {
+    username: username,
+    text: '',
+    fileUrl: data.url,
+    fileName: data.originalname,
+    fileType: data.mimetype,
+    room: currentRoom
+  })
 
-        const li = document.createElement('li')
-        li.style.cssText = 'padding:12px 15px; color:white; cursor:pointer; border-bottom:1px solid #1a1a2e;'
-        li.innerHTML = `
-          <div style="display:flex; align-items:center; gap:8px;">
-            <span style="width:8px; height:8px; border-radius:50%; background:#4caf50; display:inline-block;"></span>
-            <span>${user}</span>
-          </div>
-        `
-        li.onmouseover = () => li.style.background = '#1a1a2e'
-        li.onmouseout = () => li.style.background = 'transparent'
-        li.onclick = () => startPrivateChat(user)
-        ul.appendChild(li)
-      })
-    }
-
-    function startPrivateChat(targetUser) {
-      currentChatUser = targetUser
-      const roomId = [username, targetUser].sort().join('_')
-      currentRoom = roomId
-      socket.emit('join_private_room', { roomId, targetUser })
-      document.getElementById('chatHeader').textContent = `🔒 Private chat with ${targetUser}`
-      document.getElementById('messages').innerHTML = ''
-    }
-
-    function switchToGlobal() {
-      currentRoom = 'global'
-      currentChatUser = null
-      document.getElementById('chatHeader').textContent = '🌐 Global Chat'
-      document.getElementById('messages').innerHTML = ''
-      socket.emit('get_global_messages')
-    }
-
-    function sendMessage() {
-      const input = document.getElementById('messageInput')
-      if (!input.value) return
-      socket.emit('send_message', {
-        text: input.value,
-        username: username,
-        room: currentRoom
-      })
-      input.value = ''
-    }
-
-    // Enter key works on both login and chat
-    document.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        if (document.getElementById('chat').style.display === 'flex') {
-          sendMessage()
-        } else {
-          joinChat()
-        }
-      }
-    })
-
-    socket.on('load_messages', (messages) => {
-      document.getElementById('messages').innerHTML = ''
-      messages.forEach(msg => addMessage(msg.username, msg.text, msg.fileUrl, msg.fileType))
-    })
-
-    socket.on('receive_message', (data) => {
-      addMessage(data.username, data.text, data.fileUrl, data.fileType)
-    })
-
-    function addMessage(user, text, fileUrl, fileType) {
-      const li = document.createElement('li')
-      let content = `<span>${user}</span>`
-      if (text) content += `${text}`
-      if (fileUrl) {
-        if (fileType && fileType.startsWith('image/')) {
-          content += `<br><img src="${fileUrl}" style="max-width:200px; border-radius:8px; margin-top:8px;" />`
-        } else {
-          content += `<br><a href="${fileUrl}" target="_blank" style="color:#e94560;">📄 ${fileUrl.split('/').pop()}</a>`
-        }
-      }
-      li.innerHTML = content
-      document.getElementById('messages').appendChild(li)
-      const messages = document.getElementById('messages')
-      messages.scrollTop = messages.scrollHeight
-    }
-
-    function logout() {
-      localStorage.removeItem('username')
-      username = ''
-      currentRoom = 'global'
-      currentChatUser = null
-      conversations = []
-      document.getElementById('chat').style.display = 'none'
-      document.getElementById('login').style.display = 'block'
-      document.getElementById('messages').innerHTML = ''
-      document.getElementById('usersList').innerHTML = ''
-    }
-
-    async function sendFile() {
-      const fileInput = document.getElementById('fileInput')
-      const file = fileInput.files[0]
-      if (!file) return
-
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const response = await fetch('/upload', {
-        method: 'POST',
-        body: formData
-      })
-
-      const data = await response.json()
-
-      socket.emit('send_message', {
-        username: username,
-        text: '',
-        fileUrl: data.url,
-        fileName: data.originalname,
-        fileType: data.mimetype,
-        room: currentRoom
-      })
-
-      fileInput.value = ''
-    }
+  fileInput.value = ''
+}
   </script>
 </body>
 </html>
